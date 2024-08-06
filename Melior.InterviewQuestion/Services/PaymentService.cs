@@ -1,7 +1,7 @@
 ﻿using Melior.InterviewQuestion.Data;
+using Melior.InterviewQuestion.Exceptions;
 using Melior.InterviewQuestion.Factories;
 using Melior.InterviewQuestion.Types;
-using System.Configuration;
 
 namespace Melior.InterviewQuestion.Services
 {
@@ -9,9 +9,9 @@ namespace Melior.InterviewQuestion.Services
     {
         private readonly IAccountDataStore _accountDataStore;
 
-        // Could inject IAccountDataStore directly into the constructor and assume that a setup logic would call the factory to create
-        // the correct instance of IAccountDataStore, however for completeness I wanted to demonstrate how we could use a factory to create the instance
-        // of the accountDataStore depending on the configuration settings
+        // I could inject IAccountDataStore directly into the constructor and assume that a setup logic would call the factory to create
+        // the correct instance of IAccountDataStore, however for completeness I wanted to demonstrate how I could use a factory to create
+        // the instance of the IAccountDataStore depending on the configuration settings
         public PaymentService(IAccountDataStoreFactory accountDataStoreFactory)
         {
             _accountDataStore = accountDataStoreFactory.GetAccountDataStore();
@@ -19,83 +19,49 @@ namespace Melior.InterviewQuestion.Services
 
         public MakePaymentResult MakePayment(MakePaymentRequest request)
         {
-            var result = new MakePaymentResult();
-            result.Success = true;
-
-            //var dataStoreType = ConfigurationManager.AppSettings["DataStoreType"];
+            var result = new MakePaymentResult()
+            {
+                Success = false
+            };
 
             Account account = _accountDataStore.GetAccount(request.DebtorAccountNumber);
 
-            //if (dataStoreType == "Backup")
-            //{
-            //    var accountDataStore = new BackupAccountDataStore();
-            //    account = accountDataStore.GetAccount(request.DebtorAccountNumber);
-            //}
-            //else
-            //{
-            //    var accountDataStore = new AccountDataStore();
-            //    account = accountDataStore.GetAccount(request.DebtorAccountNumber);
-            //}
-
             if (account == null)
             {
-                result.Success = false;
                 return result;
             }
 
-            
+            var accountValidForPayment = IsAccountValidForPayment(account, request);
+            if (!accountValidForPayment)
+            {
+                return result;
+            }
 
+            account.Balance -= request.Amount;
+            _accountDataStore.UpdateAccount(account);
+
+            result.Success = true;
+            return result;
+        }
+
+        private static bool IsAccountValidForPayment(Account account, MakePaymentRequest request)
+        {
             switch (request.PaymentScheme)
             {
                 case PaymentScheme.Bacs:
-                    if (!account.AllowedPaymentSchemes.HasFlag(AllowedPaymentSchemes.Bacs))
-                    {
-                        result.Success = false;
-                    }
-                    break;
-
+                    return account.AllowedPaymentSchemes.HasFlag(AllowedPaymentSchemes.Bacs);
                 case PaymentScheme.FasterPayments:
-                    if (!account.AllowedPaymentSchemes.HasFlag(AllowedPaymentSchemes.FasterPayments))
-                    {
-                        result.Success = false;
-                    }
-                    else if (account.Balance < request.Amount)
-                    {
-                        result.Success = false;
-                    }
-                    break;
-
+                    return account.AllowedPaymentSchemes.HasFlag(AllowedPaymentSchemes.FasterPayments) && HasSufficientBalance(account.Balance, request.Amount);
                 case PaymentScheme.Chaps:
-                    if (!account.AllowedPaymentSchemes.HasFlag(AllowedPaymentSchemes.Chaps))
-                    {
-                        result.Success = false;
-                    }
-                    else if (account.Status != AccountStatus.Live)
-                    {
-                        result.Success = false;
-                    }
-                    break;
+                    return account.AllowedPaymentSchemes.HasFlag(AllowedPaymentSchemes.Chaps) && account.Status == AccountStatus.Live;
+                default:
+                    throw new MissingPaymentSchemeException(request.PaymentScheme);
             }
+        }
 
-            if (result.Success)
-            {
-                account.Balance -= request.Amount;
-
-                _accountDataStore.UpdateAccount(account);
-
-                //if (dataStoreType == "Backup")
-                //{
-                //    var accountDataStore = new BackupAccountDataStore();
-                //    accountDataStore.UpdateAccount(account);
-                //}
-                //else
-                //{
-                //    var accountDataStore = new AccountDataStore();
-                //    accountDataStore.UpdateAccount(account);
-                //}
-            }
-
-            return result;
+        private static bool HasSufficientBalance(decimal balance, decimal amountToPay)
+        {
+            return balance >= amountToPay;
         }
     }
 }

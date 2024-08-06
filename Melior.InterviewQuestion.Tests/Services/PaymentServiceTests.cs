@@ -1,6 +1,7 @@
 ﻿using AutoFixture;
 using FluentAssertions;
 using Melior.InterviewQuestion.Data;
+using Melior.InterviewQuestion.Exceptions;
 using Melior.InterviewQuestion.Factories;
 using Melior.InterviewQuestion.Services;
 using Melior.InterviewQuestion.Types;
@@ -217,6 +218,36 @@ namespace Melior.InterviewQuestion.Tests.Services
             result.Success.Should().BeFalse();
 
             mockAccountDataStore.Verify(x => x.UpdateAccount(It.IsAny<Account>()), Times.Never());
+        }
+
+        [TestMethod]
+        public void ShouldThrowMissingPaymentSchemeException_WhenRequestContainsInvalidPaymentScheme()
+        {
+            var mockAccountDataStore = new Mock<IAccountDataStore>();
+
+            const decimal balance = 1000;
+            const decimal paymentAmount = balance - 1;
+
+            var account = new Account()
+            {
+                AccountNumber = Fixture.Create<string>(),
+                Balance = balance,
+                Status = AccountStatus.Live
+            };
+
+            mockAccountDataStore.Setup(x => x.GetAccount(account.AccountNumber)).Returns(account);
+
+            var mockDataStoreFactory = SetupMockDataStoreFactory(mockAccountDataStore.Object);
+
+            var sut = new PaymentService(mockDataStoreFactory.Object);
+
+            PaymentScheme invalidPaymentScheme = (PaymentScheme)(-1);
+
+            var paymentRequest = GetMakePaymentRequest(paymentAmount, invalidPaymentScheme, account.AccountNumber);
+
+            sut.Invoking(x => x.MakePayment(paymentRequest)).Should()
+                .Throw<MissingPaymentSchemeException>()
+                .WithMessage($"Missing PaymentScheme for {invalidPaymentScheme}");
         }
 
         #region helper methods
