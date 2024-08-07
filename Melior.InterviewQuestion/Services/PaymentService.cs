@@ -9,7 +9,7 @@ namespace Melior.InterviewQuestion.Services
     {
         private readonly IAccountDataStore _accountDataStore;
 
-        // I could inject IAccountDataStore directly into the constructor and assume that a setup logic would call the factory to create
+        // IAccountDataStore could be injected directly into the constructor if it's assumed that a setup logic would call the factory to create
         // the correct instance of IAccountDataStore, however for completeness I wanted to demonstrate how I could use a factory to create
         // the instance of the IAccountDataStore depending on the configuration settings
         public PaymentService(IAccountDataStoreFactory accountDataStoreFactory)
